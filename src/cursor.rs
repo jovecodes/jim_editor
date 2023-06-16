@@ -2,7 +2,6 @@ use nalgebra::Vector2;
 
 use crate::file::JimFile;
 
-
 #[derive(Debug, Default)]
 pub struct Cursor {
     pub xy_pos: Vector2<usize>,
@@ -52,6 +51,14 @@ impl Cursor {
     pub fn move_full_left(&mut self) {
         self.index -= self.xy_pos.x;
         self.xy_pos.x = 0;
+    }
+
+    pub fn move_full_right(&mut self, file: &JimFile) {
+        if let Some(length) = self.current_line_length(file) {
+            let distance = length - self.xy_pos.x;
+            self.index += distance;
+            self.xy_pos.x += distance;
+        }
     }
 
     pub fn move_right(&mut self, file: &JimFile) {

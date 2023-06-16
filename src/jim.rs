@@ -1,4 +1,9 @@
-use crate::{file::JimFile, mapping::Mapping, mode::Mode, cursor::Cursor};
+use crate::{
+    cursor::Cursor,
+    file::JimFile,
+    mapping::{Command, Mapping},
+    mode::Mode,
+};
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use nalgebra::Vector2;
 use std::{
@@ -17,8 +22,10 @@ use tui::{
 #[derive(Debug, Default)]
 pub struct Jim {
     properties: JimProperties,
+    command: String,
     nmaps: Vec<Mapping>,
     imaps: Vec<Mapping>,
+    cmaps: Vec<Command>,
 }
 
 #[derive(Debug, Default)]
@@ -29,13 +36,12 @@ pub struct JimProperties {
     pub buttons_pressed: Vec<KeyCode>,
     pub buffers: Vec<JimFile>,
     pub recent_buffers: VecDeque<usize>,
-    pub cant_press_maps: bool
+    pub cant_press_maps: bool,
 }
 
 impl JimProperties {
     pub fn use_mapping(&mut self, buttons: &Vec<KeyCode>) -> bool {
-        self
-            .buttons_pressed
+        self.buttons_pressed
             .windows(buttons.len())
             .any(|window| window == buttons)
     }
@@ -105,10 +111,19 @@ impl JimProperties {
         Ok(())
     }
 
-    pub fn force_move_right(&mut self, amount: usize) {
+    pub fn force_move_cursor_right(&mut self, amount: usize) {
         for _ in 0..amount {
-            self.cursor.force_move_right(&self.buffers[self.recent_buffers[0]])
+            self.cursor
+                .force_move_right(&self.buffers[self.recent_buffers[0]])
         }
+    }
+
+    pub fn move_cursor_full_right(&mut self) {
+        self.cursor.move_full_right(&self.buffers[self.recent_buffers[0]]);
+    }
+
+    pub fn move_cursor_full_left(&mut self) {
+        self.cursor.move_full_left();
     }
 }
 
@@ -135,6 +150,7 @@ impl Jim {
                 match self.properties.mode {
                     Mode::Normal => self.normal(key),
                     Mode::Insert => self.insert(key),
+                    Mode::Command => self.command(key),
                 }
             }
         }
@@ -145,13 +161,8 @@ impl Jim {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(0)
-            .constraints([Constraint::Min(0)].as_ref())
+            .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
             .split(f.size());
-
-        // let mut text = Text::from(Spans::from(self.file_contents.clone()));
-        // text.patch_style(Style::default());
-        // let help_message = Paragraph::new(text);
-        // f.render_widget(help_message, chunks[0]);
 
         let text = Text::raw(
             self.properties.get_current_buffer_contents().clone()
@@ -162,6 +173,9 @@ impl Jim {
         );
         let file = Paragraph::new(text);
         f.render_widget(file, chunks[0]);
+
+        let command_paragraph = Paragraph::new(self.command.clone());
+        f.render_widget(command_paragraph, chunks[1]);
 
         let cursor_pos = self.get_cursor_position();
         f.set_cursor(cursor_pos.x as u16, cursor_pos.y as u16)
@@ -177,18 +191,20 @@ impl Jim {
         }
     }
 
-    fn to_normal_mode(&mut self) {
-        self.properties.mode = Mode::Normal;
-        self.properties.move_cursor_left(1);
+    fn command(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char('e') => self.to_normal_mode(),
+            KeyCode::Char(char) => self.write_char_to_command(char),
+            KeyCode::Enter => self.run_commands(),
+            KeyCode::Backspace => self.backspace_command(),
+            _ => todo!(),
+        }
     }
 
     fn normal(&mut self, key: KeyEvent) {
         self.properties.buttons_pressed.push(key.code);
         for map in &mut self.nmaps {
             map.try_use(&mut self.properties)
-        }
-        if key.code == KeyCode::Char('q') {
-            self.properties.quitting = true;
         }
     }
 
@@ -200,6 +216,16 @@ impl Jim {
     pub fn add_imaps(mut self, imaps: fn() -> Vec<Mapping>) -> Self {
         self.imaps.append(&mut (imaps)());
         self
+    }
+
+    pub fn add_cmaps(mut self, cmaps: fn() -> Vec<Command>) -> Self {
+        self.cmaps.append(&mut (cmaps)());
+        self
+    }
+
+    fn to_normal_mode(&mut self) {
+        self.properties.mode = Mode::Normal;
+        self.properties.move_cursor_left(1);
     }
 
     fn get_workspace(&self) -> io::Result<PathBuf> {
@@ -218,5 +244,20 @@ impl Jim {
             .cursor
             .get_position(self.properties.get_current_buffer())
     }
-}
 
+    fn write_char_to_command(&mut self, char: char) {
+        self.command.push(char);
+    }
+
+    fn run_commands(&mut self) {
+        for command in &mut self.cmaps {
+            command.try_use(&mut self.properties, &self.command)
+        }
+        self.command.clear();
+        self.properties.mode = Mode::Normal;
+    }
+
+    fn backspace_command(&mut self) {
+        self.command.pop();
+    }
+}

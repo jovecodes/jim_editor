@@ -9,9 +9,35 @@ pub struct Mapping {
     on_pressed: fn(&mut JimProperties),
 }
 
+pub struct Command {
+    name: String,
+    on_presed: fn(&mut JimProperties),
+}
+
+impl Command {
+    pub fn new(name: &str, on_presed: fn(&mut JimProperties)) -> Self {
+        Self {
+            name: name.to_string(),
+            on_presed,
+        }
+    }
+
+    pub fn try_use(&mut self, properties: &mut JimProperties, command_string: &str) {
+        if &self.name == command_string {
+            (self.on_presed)(properties)
+        }
+    }
+}
+
+impl std::fmt::Debug for Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Command").field("name", &self.name).finish()
+    }
+}
+
 impl std::fmt::Debug for Mapping {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("IMap")
+        f.debug_struct("Mapping")
             .field("buttons", &self.buttons)
             .finish()
     }

@@ -10,11 +10,11 @@ use tui::{
 };
 
 pub mod builtin_maps;
+pub mod cursor;
 pub mod file;
 pub mod jim;
 pub mod mapping;
 pub mod mode;
-pub mod cursor;
 
 fn main() -> Result<(), Box<dyn Error>> {
     run()
@@ -51,6 +51,7 @@ fn create_jim<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
         .init()?
         .add_nmaps(builtin_maps::nmaps)
         .add_imaps(builtin_maps::imaps)
+        .add_cmaps(builtin_maps::cmaps)
         .run(terminal)
 }
 
