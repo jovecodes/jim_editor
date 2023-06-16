@@ -1,4 +1,4 @@
-use crate::{mode::Mode, mapping::Mapping};
+use crate::{mapping::Mapping, mode::Mode};
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use nalgebra::Vector2;
 use std::{io, path::PathBuf};
@@ -10,14 +10,12 @@ use tui::{
     Frame, Terminal,
 };
 
-
 #[derive(Debug, Default)]
 pub struct Jim {
     properties: JimProperties,
     nmaps: Vec<Mapping>,
     imaps: Vec<Mapping>,
 }
-
 
 #[derive(Debug, Default)]
 pub struct JimProperties {
@@ -28,14 +26,16 @@ pub struct JimProperties {
     pub buttons_pressed: Vec<KeyCode>,
 }
 
-
 impl JimProperties {
     pub fn use_mapping(&mut self, buttons: &Vec<KeyCode>) -> bool {
-        let contains = self.buttons_pressed.windows(buttons.len()).any(|window| window == buttons);
+        let contains = self
+            .buttons_pressed
+            .windows(buttons.len())
+            .any(|window| window == buttons);
         if contains {
             self.buttons_pressed.clear();
         }
-        return contains
+        return contains;
     }
 
     pub fn move_cursor_down(&mut self, amount: u16) {
@@ -63,10 +63,13 @@ impl JimProperties {
     }
 
     pub fn current_line(&self) -> &str {
-        &self.file_contents.lines().nth(self.cursor.xy_pos.y as usize).unwrap()
+        &self
+            .file_contents
+            .lines()
+            .nth(self.cursor.xy_pos.y as usize)
+            .unwrap()
     }
 }
-
 
 impl Jim {
     pub fn new() -> Self {
@@ -109,33 +112,53 @@ impl Jim {
         // let help_message = Paragraph::new(text);
         // f.render_widget(help_message, chunks[0]);
 
-        let text = Text::raw(self.properties.file_contents.clone() + "\n" + &self.properties.cursor.index.to_string());
+        let text = Text::raw(
+            self.properties.file_contents.clone()
+                + "\n"
+                + &self.properties.cursor.index.to_string()
+                + "\n"
+                + &self.properties.cursor.xy_pos.to_string(),
+        );
         let file = Paragraph::new(text);
         f.render_widget(file, chunks[0]);
 
-        let cursor_pos = self.properties.cursor.get_position(&self.properties.file_contents);
+        let cursor_pos = self
+            .properties
+            .cursor
+            .get_position(&self.properties.file_contents);
         f.set_cursor(cursor_pos.x as u16, cursor_pos.y as u16)
     }
 
     fn insert(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('e') => self.to_normal_mode(),
-            KeyCode::Char(char) => self.properties.cursor.write_char_to(char, &mut self.properties.file_contents),
-            KeyCode::Enter => self.properties.cursor.write_char_to('\n', &mut self.properties.file_contents),
-            KeyCode::Backspace => self.properties.cursor.backspace(&mut self.properties.file_contents),
+            KeyCode::Char(char) => self
+                .properties
+                .cursor
+                .write_char_to(char, &mut self.properties.file_contents),
+            KeyCode::Enter => self
+                .properties
+                .cursor
+                .write_char_to('\n', &mut self.properties.file_contents),
+            KeyCode::Backspace => self
+                .properties
+                .cursor
+                .backspace(&mut self.properties.file_contents),
             _ => todo!(),
         }
     }
 
     fn to_normal_mode(&mut self) {
         self.properties.mode = Mode::Normal;
-        self.properties.cursor.move_left(&self.properties.file_contents);
+        self.properties
+            .cursor
+            .move_left(&self.properties.file_contents);
     }
 
     fn normal(&mut self, key: KeyEvent) {
         self.properties.buttons_pressed.push(key.code);
         for map in &mut self.nmaps {
-            map.try_use(&mut self.properties) 
+            map.try_use(&mut self.properties)
         }
         if key.code == KeyCode::Char('q') {
             self.properties.quitting = true;
@@ -171,12 +194,12 @@ impl Jim {
 
 #[derive(Debug, Default)]
 pub struct Cursor {
-    pub xy_pos: Vector2<u64>,
+    pub xy_pos: Vector2<usize>,
     pub index: usize,
 }
 
 impl Cursor {
-    pub fn new(xy_pos: Vector2<u64>, index: usize) -> Self {
+    pub fn new(xy_pos: Vector2<usize>, index: usize) -> Self {
         Self { xy_pos, index }
     }
 
@@ -189,22 +212,36 @@ impl Cursor {
     pub fn write_char_to(&mut self, char: char, file_text: &mut String) {
         file_text.insert(self.index, char);
 
-        self.xy_pos.x += 1;
-        self.index += 1;
-
         if char == '\n' {
             self.move_down(&file_text);
+            self.move_full_left();
+            self.index += self.current_line_length(&file_text).unwrap();
+        } else {
+            self.xy_pos.x += 1;
+            self.index += 1;
         }
     }
 
     fn backspace(&mut self, file_contents: &mut String) {
-        file_contents.remove(self.index - 1);
-        self.move_left(&file_contents);
+        if file_contents.chars().nth(self.index - 1).unwrap() == '\n' {
+            self.index -= 1;
+            self.xy_pos.y -= 1;
+            self.xy_pos.x = self.current_line_length(&file_contents).unwrap();
+            self.xy_pos = self.get_position(&file_contents);
+        } else {
+            self.move_left(&file_contents);
+        }
+        file_contents.remove(self.index);
+    }
+
+    pub fn move_full_left(&mut self) {
+        self.index -= self.xy_pos.x as usize;
+        self.xy_pos.x = 0;
     }
 
     pub fn move_right(&mut self, text: &str) {
         if let Some(length) = self.current_line_length(text) {
-            if self.xy_pos.x + 1 < length as u64 {
+            if self.xy_pos.x + 1 < length {
                 self.index += 1;
                 self.xy_pos.x += 1;
             }
@@ -231,7 +268,7 @@ impl Cursor {
         self.xy_pos.y -= 1;
 
         if let Some(length) = self.current_line_length(text) {
-            self.index -= length - self.xy_pos.x.clamp(0, length as u64) as usize;
+            self.index -= length - self.xy_pos.x.clamp(0, length);
         } else {
             eprintln!("Could not move UP")
         }
@@ -253,8 +290,8 @@ impl Cursor {
         }
     }
 
-    pub fn get_position(&self, text: &str) -> Vector2<u64> {
-        let length = self.current_line_length(text).unwrap() as u64;
+    pub fn get_position(&self, text: &str) -> Vector2<usize> {
+        let length = self.current_line_length(text).unwrap();
         Vector2::new(self.xy_pos.x.clamp(0, length), self.xy_pos.y)
     }
 
@@ -270,5 +307,4 @@ impl Cursor {
             None
         }
     }
-
 }

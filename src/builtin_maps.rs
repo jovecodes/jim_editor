@@ -1,8 +1,17 @@
-use crate::{mapping::{Mapping, ToMapping}, jim::JimProperties, mode::Mode};
-
+use crate::{
+    jim::JimProperties,
+    mapping::{Mapping, ToMapping},
+    mode::Mode,
+};
 
 pub fn nmaps() -> Vec<Mapping> {
-    vec!["i".to_mapping(i), "h".to_mapping(h), "j".to_mapping(j), "k".to_mapping(k), "l".to_mapping(l)]
+    vec![
+        "i".to_mapping(i),
+        "h".to_mapping(h),
+        "j".to_mapping(j),
+        "k".to_mapping(k),
+        "l".to_mapping(l),
+    ]
 }
 
 pub fn imaps() -> Vec<Mapping> {

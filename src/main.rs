@@ -9,10 +9,10 @@ use tui::{
     Terminal,
 };
 
-pub mod jim;
-pub mod mode;
-pub mod mapping;
 pub mod builtin_maps;
+pub mod jim;
+pub mod mapping;
+pub mod mode;
 
 fn main() -> Result<(), Box<dyn Error>> {
     run()
