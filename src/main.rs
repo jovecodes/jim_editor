@@ -10,9 +10,11 @@ use tui::{
 };
 
 pub mod builtin_maps;
+pub mod file;
 pub mod jim;
 pub mod mapping;
 pub mod mode;
+pub mod cursor;
 
 fn main() -> Result<(), Box<dyn Error>> {
     run()

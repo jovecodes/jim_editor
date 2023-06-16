@@ -4,6 +4,8 @@ use crate::jim::JimProperties;
 
 pub struct Mapping {
     buttons: Vec<KeyCode>,
+    wait_for_next_press: bool,
+    already_pressed: bool,
     on_pressed: fn(&mut JimProperties),
 }
 
@@ -16,26 +18,43 @@ impl std::fmt::Debug for Mapping {
 }
 
 impl Mapping {
-    pub fn new(buttons: Vec<KeyCode>, on_pressed: fn(&mut JimProperties)) -> Self {
+    pub fn new(
+        buttons: Vec<KeyCode>,
+        on_pressed: fn(&mut JimProperties),
+        wait_for_next_press: bool,
+    ) -> Self {
         Self {
             buttons,
             on_pressed,
+            wait_for_next_press,
+            already_pressed: false,
         }
     }
 
-    pub fn try_use(&self, properties: &mut JimProperties) {
-        if properties.use_mapping(&self.buttons) {
-            (self.on_pressed)(properties);
+    pub fn try_use(&mut self, properties: &mut JimProperties) {
+        if properties.cant_press_maps && !self.already_pressed {
+            return;
+        }
+        if properties.use_mapping(&self.buttons) || self.already_pressed {
+            if !self.wait_for_next_press || self.already_pressed {
+                self.already_pressed = false;
+                properties.cant_press_maps = false;
+                (self.on_pressed)(properties);
+            } else if self.wait_for_next_press {
+                self.already_pressed = true;
+                properties.cant_press_maps = true;
+            }
+            properties.buttons_pressed.clear();
         }
     }
 }
 
 pub trait ToMapping {
-    fn to_mapping(&self, on_pressed: fn(&mut JimProperties)) -> Mapping;
+    fn to_mapping(&self, on_pressed: fn(&mut JimProperties), wait_for_next_press: bool) -> Mapping;
 }
 
 impl ToMapping for str {
-    fn to_mapping(&self, on_pressed: fn(&mut JimProperties)) -> Mapping {
+    fn to_mapping(&self, on_pressed: fn(&mut JimProperties), wait_for_next_press: bool) -> Mapping {
         let mut buttons = vec![];
 
         let mut special_mode = false;
@@ -60,15 +79,13 @@ impl ToMapping for str {
                 } else if special_chars == vec!['E', 's', 'c'] {
                     buttons.push(KeyCode::Esc);
                 }
+            } else if char == '<' {
+                special_mode = true;
             } else {
-                if char == '<' {
-                    special_mode = true;
-                } else {
-                    buttons.push(KeyCode::Char(char));
-                }
+                buttons.push(KeyCode::Char(char));
             }
         }
 
-        Mapping::new(buttons, on_pressed)
+        Mapping::new(buttons, on_pressed, wait_for_next_press)
     }
 }
